@@ -4,6 +4,7 @@ import sys
 import os
 import re
 import csv
+import glob
 from datetime import datetime
 # Math
 try:
@@ -15,39 +16,59 @@ try:
 except ImportError:
     sys.exit('LMFit (https://lmfit.github.io/lmfit-py/) module not found. Terminating...')
 
-## DECLARE
+# DECLARE
 # Now
 now = datetime.now()
 
 # Minimize setup
 def model(k, sim_i_values, c):
-    return (k * sim_i_values + c )
+    return (k * values_simulated_formfactor[0] + c )
 
 def calculated_model(paramters, sim_i_values):
     k = paramters['k'].value
     c = paramters['c'].value
 
-    return model(k, sim_i_values, c)
+    return model(k, values_simulated_formfactor[0], c)
 
 def objective_function(paramters, x, sim_values, exp_values):
-
-    residual = exp_values[1][min_index:max_index] - calculated_model(paramters, sim_values[1][min_index:max_index])
-    weighted_residual = np.power(residual, 2) / np.power(exp_values[2][min_index:max_index], 2)
-
+# Have to adjust
+    residual = values_experimental_formfactor[min_index:max_index] - calculated_model(paramters, values_simulated_formfactor[min_index:max_index])
+    weighted_residual = np.power(residual, 2) / np.power(values_experimental[2][min_index:max_index], 2)
     return weighted_residual
 
+# Does a fourier transform on simulated data
+# input: array of q values, and a 2D array of simulated values (z, SLD)
+# output: result array of summed FT
+
+def sim_fourier(q, values_sim):
+    values_simulated_transformed = []
+    result = []
+    for qvalue in values_experimental[0]:
+        result.clear()
+        for sld, k in zip(values_simulated_subtracted[1], values_simulated_subtracted[0]):
+            # We use *10 because gromacs outputs z values as nm. We need angstrom
+            sA = sld*(np.cos(qvalue*k*10)+1j*np.sin(qvalue*k*10))
+            result.append(sA)
+        j = sum(result)
+        values_simulated_transformed.append(j)
+    return values_simulated_transformed
+
+def Form_Factor_Sim(values_simulated_transformed):
+    simulated_FF = [abs(x) for x in values_simulated_transformed]
+    return simulated_FF
+    
 ## HOUSEKEEPING
 print('\n------------------------------------------------\n Model Free Analysis Script\t v.0.1\n\n\tWritten By:\t Aislyn Laurent\n\tLast Edited:\t 26-04-2020\n-------------------------------------------------\n')
 
 ## USER INPUT
 # Data Files
 print('Please enter the following information:')
-data_experimental = input('\nExperimental data file path:\n')
-data_simulated = input('\nSimulated data file path:\n')
+data_experimental = "DPPC-5pctPG_Avanti-100nm.dat"
+data_simulated = "Electron_Density_From_Simulation.dat"
 
 # Data Range
-max_value = float(input('\nData max value:\n'))
-min_value = float(input('\nData min value:\n'))
+max_value = 0.678166
+min_value = 0.00945749
 
 if data_experimental and data_simulated and max_value and min_value != None:
     print('\t\t\t\t\tSuccess!')
@@ -60,6 +81,8 @@ print('\n------------------------------------------------\n')
 ## PROCESS DATA
 values_experimental = []
 values_simulated = []
+values_experimental_formfactor = []
+values_simulated_formfactor = []
 
 # Get data from files
 for i in range(2):
@@ -88,7 +111,9 @@ for i in range(2):
         line = line.strip()
         
         # check for letters / words / headers / footers
-        if not line[:1].isdigit() or re.search('[a-df-zA-DF-Z]', line):
+        
+        # I removed .isdigit because it would consider my negative numbers as the header and ignore them
+        if not line[:1] or re.search('[a-df-zA-DF-Z]', line):
             pass
         else:
             fields = line.split()
@@ -110,9 +135,10 @@ for i in range(2):
         values_experimental = np.array(values_experimental)
         print(values_experimental.shape, end =" ")
     else:
+        # not q, i and e. Should be z and SLD, respectively. No third column
         values_simulated.append(q_value)
         values_simulated.append(i_value)
-        values_simulated.append(e_value)
+        # values_simulated.append(e_value)
         values_simulated = np.array(values_simulated)
         print(values_simulated.shape, end =" ")
     
@@ -120,13 +146,52 @@ for i in range(2):
 
 print('\n------------------------------------------------\n')
 
-print('Interpolating simulated values...', end =" ")
+print('FT on SLD of Simulation Data...', end =" ")
 
-values_simulated_inter = []
-values_simulated_inter.append(values_experimental[0])
-values_simulated_inter.append(np.interp(values_experimental[0], values_simulated[0], values_simulated[1]))
+#SLD background subtraction
+values_simulated_subtracted = []
+filelist = []
+
+filenames = sorted(glob.glob('Electron*.dat'))
+for f in filenames:
+    filelist.append(f)
+    
+    z, SLD  = np.genfromtxt(fname=f,skip_header=0, skip_footer=0,unpack=True)
+
+    z1, SLDSolv  = np.genfromtxt(fname=f,skip_header=0, skip_footer=99,unpack=True)
+    
+SLDsubtracted = SLD-SLDSolv
+
+values_simulated_subtracted.append(values_simulated[0])
+values_simulated_subtracted.append(SLDsubtracted)
+values_simulated_subtracted = np.array(values_simulated_subtracted) 
+
+values_simulated_transformed = sim_fourier(values_experimental[0], values_simulated_subtracted)
 
 print('\tSuccess!')
+
+print('\n------------------------------------------------\n')
+
+print('Converting FT (i.e. Scattering Amplitude) into Form Factor...', end =" ")
+
+values_simulated_formfactor = Form_Factor_Sim(values_simulated_transformed)
+
+print('\tSuccess!')
+
+print('\n------------------------------------------------\n')
+
+print('Converting Experimental Iq to Form Factor...', end =" ")
+
+#Change this depending on bkg of experimental data
+bg = 0.0098
+
+values_experimental_formfactor = values_experimental[0] * np.sign(values_experimental[1]) * np.sqrt(abs((values_experimental[1])-bg))
+
+
+
+print('\tSuccess!')
+
+print('\n------------------------------------------------\n')
 
 print('\nSetting value range...')
 
@@ -157,7 +222,8 @@ x = None
 fit_result = lsq.minimize(
     objective_function,
     parameters,
-    args=(x, values_simulated, values_experimental)
+    #have to adjust
+    args=(x, values_simulated_formfactor, values_experimental_formfactor)
 )
 
 print('\t\t\t\tSuccess!')
