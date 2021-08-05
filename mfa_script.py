@@ -275,22 +275,12 @@ with open(output_filename, 'w', newline='') as csvfile:
     writer.writerow(['------------------------------------------------'])
     writer.writerow([])
 
-    writer.writerow(['Experimental FormFactor:'])
-    writer.writerow([])
-
-    for exp_ff in values_experimental_formfactor:
-        writer.writerow([exp_ff])
-
-    writer.writerow([])
-    writer.writerow(['------------------------------------------------'])
-    writer.writerow([])
-
     writer.writerow(['Fit Data:'])
     writer.writerow([])
-    writer.writerow(['q','FormFactor'])
+    writer.writerow(['q','Simulated FormFactor', 'Simulated Scattering Amplitude', 'Experimental FormFactor'])
 
-    for fit_q_value, fit_i_value in zip(values_experimental[0], calculated_sim_values):
-        writer.writerow([fit_q_value, fit_i_value])
+    for fit_q_value, fit_i_value, sim_sa, exp_ff in zip(values_experimental[0], calculated_sim_values, values_simulated_transformed, values_experimental_formfactor):
+        writer.writerow([fit_q_value, fit_i_value, sim_sa, exp_ff])
     
     writer.writerow([])
     writer.writerow(['------------------------------------------------'])
