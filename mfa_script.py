@@ -65,17 +65,24 @@ print('\n------------------------------------------------\n Model Free Analysis 
 
 ## USER INPUT
 # Data Files
-# CHANGE BACK TO INPUT
-print('Please enter the following information:')
-data_experimental = "DPPC-5pctPG_Avanti-100nm.dat"
-data_simulated = "Electron_Density_From_Simulation.dat"
+print('Please enter the following information:\n')
+data_experimental = input("Experimental data file path: ")
+data_simulated = input("Simulated data file path: ")
 
 # Data Range
-max_value = 0.678166
-min_value = 0.00945749
+max_value = float(input("\nMaximum x value to consider: "))
+min_value = float(input("Minimum x value to consider: "))
 
 #Background for the experimental data
-background = 0.0098
+background = float(input("\nExperimental backgound value: "))
+
+# Ask the user if they want to plot a graph
+plot_graph_input = input("\nWould you like to generate a graph at the end of the process? [Y/N]: ")
+
+if plot_graph_input == 'Y' or plot_graph_input == 'y':
+    plot_graph = True
+else:
+    plot_graph = False
 
 if data_experimental and data_simulated and max_value and min_value != None:
     print('\t\t\t\t\tSuccess!')
@@ -233,6 +240,7 @@ fit_result = lsq.minimize(
 
 calculated_k = fit_result.params['k'].value
 calculated_c = fit_result.params['c'].value
+calculated_sim_values = model(calculated_k, values_simulated_formfactor, calculated_c)
 
 print('\t\t\t\tSuccess!')
 
@@ -267,11 +275,21 @@ with open(output_filename, 'w', newline='') as csvfile:
     writer.writerow(['------------------------------------------------'])
     writer.writerow([])
 
+    writer.writerow(['Experimental FormFactor:'])
+    writer.writerow([])
+
+    for exp_ff in values_experimental_formfactor:
+        writer.writerow([exp_ff])
+
+    writer.writerow([])
+    writer.writerow(['------------------------------------------------'])
+    writer.writerow([])
+
     writer.writerow(['Fit Data:'])
     writer.writerow([])
-    writer.writerow(['q','i'])
+    writer.writerow(['q','FormFactor'])
 
-    for fit_q_value, fit_i_value in zip(values_experimental[0], model(calculated_k, values_simulated_formfactor, calculated_c)):
+    for fit_q_value, fit_i_value in zip(values_experimental[0], calculated_sim_values):
         writer.writerow([fit_q_value, fit_i_value])
     
     writer.writerow([])
@@ -284,10 +302,51 @@ print('\n------------------------------------------------\n')
 
 print('Job complete!')
 
-print('Plotting results...')
+if plot_graph:
+    print('Plotting results...')
 
-prob_fig = plt.figure()
+    plt.figure()
 
+    plt.scatter(
+            values_experimental[0][min_index:max_index],
+            calculated_sim_values[min_index:max_index],
+            edgecolor='r',
+            facecolor='w',
+            label='Scaled Simulated FormFactor',
+            zorder=5
+        )
+
+    plt.errorbar(
+        values_experimental[0][min_index:max_index],
+        values_experimental_formfactor[min_index:max_index],
+        fmt='o',
+        color='c',
+        mfc='w',
+        label='Experimental FormFactor',
+        zorder=1
+    )
+
+    plt.errorbar(
+        values_experimental[0][min_index:max_index],
+        values_experimental_formfactor[min_index:max_index] - values_experimental_formfactor_error[min_index:max_index],
+        fmt='_',
+        color='grey',
+        zorder=0
+    )
+    plt.errorbar(
+        values_experimental[0][min_index:max_index],
+        values_experimental_formfactor[min_index:max_index] + values_experimental_formfactor_error[min_index:max_index],
+        fmt='_',
+        color='grey',
+        zorder=0
+    )
+
+    plt.xlabel('q(A-1)')
+    plt.ylabel('FormFactor')
+    plt.title('Simulated vs Experimental FormFactor')
+    plt.legend()
+
+    plt.show()
 
 print('\n------------------------------------------------\n')
 
